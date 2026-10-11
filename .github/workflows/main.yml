@@ -42,7 +42,7 @@ jobs:
           git push origin HEAD
 
       - name: 🚀 用仓库里的 js 部署到 CF Workers
-        
+        if: steps.check.outputs.has_changes == 'true'
         uses: cloudflare/wrangler-action@v4
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
