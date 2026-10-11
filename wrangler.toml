@@ -1,7 +1,6 @@
-name = "tgproxy-auto"
+name = "tgproxy"   # ← 改成你 CF 里建的 Worker 名
 main = "telegram_webproxy.js"
 compatibility_date = "2024-01-01"
 
-# 这个仓库是纯 Worker 脚本，不要配 [assets]，不然 wrangler 会报
-# "Could not detect a directory containing static files"
 send_metrics = false
+# 别写 [assets]，别写 directory = "./public"，不然就报你之前那个错
