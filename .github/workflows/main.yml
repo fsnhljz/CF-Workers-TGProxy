@@ -1,0 +1,65 @@
+name: 同步
+
+on:
+  schedule:
+    # GitHub Actions 用 UTC
+    # 北京时间 02:00 = UTC 18:00（前一天）
+    - cron: '0 18 * * *'
+  workflow_dispatch: # 允许手动点按钮跑一次
+
+permissions:
+  contents: write
+
+concurrency:
+  group: sync-upstream
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    # 只在 fork 仓库里跑，原仓库不会触发
+    if: ${{ github.event.repository.fork }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # 必须拉全量历史，否则合并不了
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Configure Git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Add upstream & fetch
+        run: |
+          # 改成你 fork 的上游地址
+          git remote add upstream https://github.com/ToiCF/CF-Workers-TGproxy.git
+          git fetch upstream
+
+      - name: Sync default branch
+        run: |
+          # 上游默认分支一般是 main，如果是 master 改成 upstream/master
+          DEFAULT_BRANCH="${GITHUB_REF_NAME}"
+          echo "Target branch: $DEFAULT_BRANCH"
+
+          git checkout "$DEFAULT_BRANCH"
+
+          # 已最新就跳过
+          LOCAL=$(git rev-parse "$DEFAULT_BRANCH")
+          UPSTREAM=$(git rev-parse "upstream/$DEFAULT_BRANCH")
+          if [ "$LOCAL" = "$UPSTREAM" ]; then
+            echo "Already up to date."
+            exit 0
+          fi
+
+          # 优先快进，失败再普通合并
+          if git merge --ff-only "upstream/$DEFAULT_BRANCH"; then
+            echo "Fast-forward OK"
+          else
+            echo "Fast-forward failed, try normal merge"
+            git merge "upstream/$DEFAULT_BRANCH" --no-edit
+          fi
+
+      - name: Push to fork
+        run: git push origin "$DEFAULT_BRANCH"
