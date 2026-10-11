@@ -1,36 +1,50 @@
-name: 同步上游并部署 Worker
+name: 上游同步并提交后部署
 
 on:
   schedule:
-    - cron: '0 18 * * *'   # 北京 02:00
+    - cron: '0 18 * * *'   # 北京 02:00 = UTC 18:00
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: write   # 需要能 push 回仓库
 
 jobs:
-  sync-deploy:
+  sync-then-deploy:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - name: ⬇️ Checkout 仓库
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: 拉最新单文件
+      - name: 📥 从上游拉最新 telegram_webproxy.js 到工作区
         run: |
           curl -fsSL "https://raw.githubusercontent.com/ToiCF/CF-Workers-TGProxy/main/telegram_webproxy.js" -o telegram_webproxy.js
 
-      - name: 检测变更
+      - name: 🔍 检测文件是否真有变化
         id: check
         run: |
           if git status --porcelain | grep "telegram_webproxy.js"; then
             echo "has_changes=true" >> $GITHUB_OUTPUT
+            echo "📈 上游有更新"
           else
             echo "has_changes=false" >> $GITHUB_OUTPUT
+            echo "📊 无变化"
           fi
 
-      - name: 部署到 CF Workers
+      - name: 💾 提交并推回仓库（先入库，再部署）
+        if: steps.check.outputs.has_changes == 'true'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add telegram_webproxy.js
+          git commit -m "chore: sync telegram_webproxy.js from upstream $(date -u +'%Y-%m-%d %H:%M:%S UTC')"
+          git push origin HEAD
+
+      - name: 🚀 用仓库里的 js 部署到 CF Workers
         if: steps.check.outputs.has_changes == 'true'
         uses: cloudflare/wrangler-action@v4
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          command: deploy telegram_webproxy.js --name tgproxy --keep-vars
+          command: deploy telegram_webproxy.js --no-bundle
